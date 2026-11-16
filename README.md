@@ -2,12 +2,7 @@
 
 Maqueta de la plataforma de evaluación de eventos y alteraciones de la nieve. El escenario de riesgo es simulado y la temporada 2022 se muestra con datos preliminares afectados por nubes.
 
-## Publicar en GitHub Pages
 
-1. Crea un repositorio y sube `index.html` a la raíz.
-2. En el repositorio, entra a Settings > Pages.
-3. En "Build and deployment", elige "Deploy from a branch", la rama `main` y la carpeta `/ (root)`.
-4. Guarda. En uno o dos minutos la página queda en `https://<usuario>.github.io/<repositorio>/`.
 
 ## Contenido
 
