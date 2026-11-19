@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predicción de lluvia y polvo sobre nieve, Andes centrales</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,500;87.5,600;87.5,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="assets/estilo.css">
+<style>
+.lista{display:grid;gap:6px}
+.lugar{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;text-align:left;font:inherit;background:var(--papel);border:1px solid var(--neblina);border-radius:var(--r-m);padding:9px 12px;cursor:pointer;color:var(--roca)}
+.lugar[aria-pressed=true]{border-color:var(--hielo);box-shadow:inset 0 0 0 1px var(--hielo)}
+.lugar .nom{font:600 1rem "Archivo",sans-serif;font-stretch:87.5%}
+.lugar .val{font:700 1.4rem "Archivo",sans-serif;font-stretch:87.5%;text-align:right;grid-row:span 2}
+.lugar .det{font-size:.83rem;color:var(--roca-2)}
+.porque{border:1px solid var(--hielo);border-top:0;border-radius:0 0 var(--r-m) var(--r-m);margin-top:-8px;padding:10px 12px;background:#F7FAFC;font-size:.86rem}
+.porque h4,.pop-porque h4{margin:0 0 6px;font:600 .92rem "Archivo",sans-serif;font-stretch:87.5%}
+.factores{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+.factores li{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:baseline}
+.factores .marca{width:9px;height:9px;border-radius:50%;display:inline-block;transform:translateY(1px)}
+.factores .v{font-family:"Archivo",sans-serif;font-stretch:87.5%;font-weight:600;white-space:nowrap}
+.factores .x{grid-column:2 / -1;color:var(--roca-2);font-size:.8rem;margin-top:-2px}
+.formula{margin-top:8px;color:var(--roca-2);font-size:.8rem}
+.pop-porque{min-width:260px;max-width:320px}
+.comentario{margin-top:10px;border-top:1px solid var(--neblina);padding-top:8px}
+.comentario .fila{justify-content:space-between;margin-bottom:6px}
+.comentario h4{margin:0}
+.comentario p.texto{margin:0;line-height:1.5;color:var(--roca)}
+.btn-ia{font-size:.82rem;padding:4px 10px}
+.barra{grid-column:1 / -1;height:5px;background:var(--neblina);border-radius:3px;overflow:hidden}
+.barra i{display:block;height:100%}
+.resumen{max-width:80ch;margin:6px 0 14px}
+.ecuacion{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch;margin-bottom:14px}
+.ecuacion .op{align-self:center;font:700 1.4rem "Archivo",sans-serif;color:var(--roca-3)}
+.factor{background:var(--papel);border:1px solid var(--neblina);border-radius:var(--r-m);padding:12px 14px}
+.factor .v{font:700 1.6rem "Archivo",sans-serif;font-stretch:87.5%}
+.factor .t{font-weight:700;margin-bottom:2px}
+.factor .x{font-size:.84rem;color:var(--roca-2);margin-top:4px}
+.factor.final{border-color:var(--roca)}
+.pin{display:flex;align-items:center;gap:6px;transform:translate(-6px,-6px)}
+.pin.izq{flex-direction:row-reverse;transform:translate(calc(-100% + 6px),-6px)}
+.pin i{width:12px;height:12px;border-radius:50%;background:var(--roca);border:2px solid #fff;box-shadow:0 0 0 1px var(--roca);flex:none}
+.pin span{font:600 .8rem "Archivo",sans-serif;font-stretch:87.5%;background:var(--papel);border:2px solid;border-radius:var(--r-s);padding:0 6px;white-space:nowrap;box-shadow:0 1px 2px rgba(34,48,58,.25)}
+.clave{display:none;gap:8px;align-items:end;flex-wrap:wrap;margin-top:8px}
+.clave.on{display:flex}
+.leyenda-mapa{font-size:.82rem;color:var(--roca-2);display:grid;gap:4px}
+@media (max-width:760px){ .ecuacion{grid-template-columns:1fr} .ecuacion .op{display:none} }
+.donde-calcula{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;color:var(--roca-2);margin-top:8px;background:var(--hielo-claro);border-radius:var(--r-m);padding:8px 12px}
+.donde-calcula .muestra{flex:none;width:16px;height:12px;margin-top:4px;border:3px solid var(--roca);border-radius:2px;background:transparent}
+.etq-calculo{font:600 .8rem "Archivo",sans-serif;font-stretch:87.5%;background:var(--roca);color:#fff;border:0;border-radius:var(--r-s);padding:2px 8px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.etq-calculo::before{display:none}
+.mk-calculo{width:14px;height:14px;background:#fff;border:3px solid var(--roca);border-radius:50%;box-shadow:0 0 0 2px #fff}
+</style>
+</head>
+<body>
+<p class="aviso" role="note">Modelo inicial basado en reglas, todavía sin entrenar ni validar. Combina lo ocurrido en cada lugar con el pronóstico de los próximos 3 días. Sirve para probar el método, no para tomar decisiones de seguridad.</p>
+
+<section class="dos-col" aria-label="Predicción por lugar de estudio">
+  <div id="mapa" class="mapa" role="region" aria-label="Mapa de predicción"></div>
+  <div class="panel">
+    <div>
+      <h2>Predicción para los próximos 3 días</h2>
+      <p class="muted small" style="margin-top:4px">Probabilidad de que ocurra el fenómeno en la cuenca alta y de que sus consecuencias lleguen a cada lugar de estudio.</p>
+    </div>
+    <div class="fila">
+      <div class="segmentado" role="group" aria-label="Fenómeno">
+        <button type="button" data-fen="ros" aria-pressed="true">Lluvia sobre nieve</button>
+        <button type="button" data-fen="polvo" aria-pressed="false">Polvo sobre nieve</button>
+      </div>
+      <div class="segmentado" role="group" aria-label="Qué mostrar">
+        <button type="button" data-modo="prob" aria-pressed="true">Probabilidad</button>
+        <button type="button" data-modo="susc" aria-pressed="false">Susceptibilidad</button>
+      </div>
+    </div>
+    <div class="leyenda-mapa" id="ley-mapa"></div>
+    <div id="mensajes"></div>
+    <div class="lista" id="lista" role="group" aria-label="Lugares de estudio"></div>
+    <details>
+      <summary>Datos meteorológicos de entrada</summary>
+      <div style="margin-top:8px" class="small">
+        <div class="fila">
+          <span class="muted">Pronóstico de</span>
+          <div class="segmentado" role="group" aria-label="Fuente del pronóstico">
+            <button type="button" data-fuente="openmeteo" aria-pressed="true">Open-Meteo</button>
+            <button type="button" data-fuente="owm" aria-pressed="false">OpenWeatherMap</button>
+          </div>
+        </div>
+        <div class="clave" id="clave">
+          <label class="campo">Clave de OpenWeatherMap<input type="password" id="owm-key" autocomplete="off" placeholder="Pega aquí tu clave" size="28"></label>
+          <button class="btn" type="button" id="owm-guardar">Usar clave</button>
+        </div>
+        <p class="muted" style="margin-top:8px"><span id="actualizado">Cargando...</span> <button class="btn sec" type="button" id="actualizar">Actualizar</button></p>
+        <p style="margin-top:6px"><button class="btn sec" type="button" id="bajar-met">Descargar pronóstico de las 4 cuencas (CSV)</button></p>
+        <div style="margin-top:12px;border-top:1px solid var(--neblina);padding-top:10px">
+          <div class="fila" style="align-items:end">
+            <label class="campo">Clave de API de Anthropic (comentarios con IA)<input type="password" id="ia-key" autocomplete="off" placeholder="sk-ant-..." size="26"></label>
+            <button class="btn" type="button" id="ia-guardar">Usar clave</button>
+            <button class="btn sec" type="button" id="ia-borrar">Quitar</button>
+          </div>
+          <p class="muted" style="margin-top:6px">Opcional. Se guarda solo en este navegador y cada comentario usa créditos de esa cuenta. A Anthropic se envían únicamente los datos de la predicción. Sin clave se muestra un comentario automático.</p>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<main class="cuerpo">
+  <h2 id="t">Lugar</h2>
+  <p class="resumen" id="resumen"></p>
+  <p class="donde-calcula" id="dondeCalcula"></p>
+  <div class="ecuacion" id="ecuacion"></div>
+
+  <div class="bloque">
+    <h3>Consecuencias esperadas si ocurre</h3>
+    <p class="muted small" id="cons-nota" style="margin:2px 0 8px"></p>
+    <div class="tabla-scroll" style="max-height:none"><table id="cons"><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <h3 style="margin:18px 0 8px">Condición meteorológica pronosticada en la cuenca de origen</h3>
+  <div id="graficos"></div>
+
+  <div class="grid-2">
+    <div class="bloque" id="b-linea">
+      <h3>Línea de nieve antes de la tormenta</h3>
+      <p class="muted small" style="margin:4px 0 10px">Aún no hay medición en tiempo real. Se usa un valor de referencia por mes y cuenca, que puedes corregir con una observación reciente.</p>
+      <div class="fila"><label class="campo">Línea de nieve (m)<input type="number" id="linea" step="50" min="500" max="6000"></label><button class="btn sec" type="button" id="linea-ref">Volver a la referencia</button></div>
+    </div>
+    <div class="bloque">
+      <h3>Cómo se calcula</h3>
+      <details><summary>Ver el método</summary><div class="small" id="metodo" style="margin-top:8px;display:grid;gap:6px"></div></details>
+    </div>
+  </div>
+</main>
+<footer class="pie">Pronóstico: Open-Meteo (CC BY 4.0) u OpenWeatherMap. Eventos: catastro de prensa 2011 a 2026. Fuentes de polvo: faenas mineras (SMA) y fuentes documentadas. Cuencas: DGA vía MMA. Referencias: <a href="estudios.html">estudios del proyecto</a>.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/datos.js"></script>
+<script src="assets/estudios.js"></script>
+<script src="assets/comun.js"></script>
+<script>
+(function(){
+const N = window.NIEVE, C = N.CONFIG, D = window.DATA;
+N.encabezado('prediccion');
+const el = id => document.getElementById(id);
+const HORAS = 72, RADIO_KM = 35, VIENTO_MIN = 6;
+const estado = {
+  fen: N.guardado.leer('fen','ros'), modo:'prob',
+  fuente: N.guardado.leer('fuente','openmeteo'), clave: C.OWM_API_KEY || N.guardado.leer('owm',''),
+  sel: N.guardado.leer('lugarSel','sjmaipo'), met:{}, faenas:null, actualizado:null
+};
+const cuencaDe = id => N.CUENCAS.find(c=>c.id===id);
+const NIVEL = p => p>=0.5 ? 'alto' : p>=0.2 ? 'medio' : 'bajo';
+const NOM_NIVEL = {alto:'alta', medio:'media', bajo:'baja'};
+const pct = v => N.num(v*100)+' %';
+
+/* ---------- Susceptibilidad ---------- */
+const anios = Math.max(...D.cat.map(e=>e.y)) - Math.min(...D.cat.map(e=>e.y)) + 1;
+const PESO_ROS = {A:1, B:0.6, D:0.3};
+function eventosROS(l){ return D.cat.filter(e=>e.sitio===l.sitio && PESO_ROS[e.cat]); }
+function suscROS(l){
+  const ev = eventosROS(l), tasa = ev.reduce((s,e)=>s+PESO_ROS[e.cat],0)/anios;
+  return {s:0.1 + 0.9*(1-Math.exp(-tasa/0.4)), n:ev.length, tasa};
+}
+function fuentesPolvo(){
+  const lista = N.FUENTES.map(f=>({nom:f.nom, lat:f.lat, lon:f.lon, tipo:f.part}));
+  (estado.faenas||[]).forEach(f=>{
+    const [lon,lat] = f.geometry.coordinates, p = f.properties;
+    if (p.situacion && !/activ/i.test(p.situacion)) return;
+    if (lista.some(x=>N.distanciaKm(x,{lat,lon})<1.5)) return;
+    lista.push({nom:p.faena||N.nombreDe(p)||'Faena minera', lat, lon, tipo:[p.tipo_faena,p.pasta].filter(Boolean).join(', ')||'Faena minera'});
+  });
+  return lista;
+}
+function fuentesCerca(c){
+  return fuentesPolvo().map(f=>{ const d = N.distanciaKm(c,f); return Object.assign({}, f, {d, rumbo:N.rumbo(c,f), w:1/(1+d/10)}); })
+    .filter(f=>f.d<=RADIO_KM).sort((a,b)=>a.d-b.d);
+}
+function suscPolvo(c){
+  const f = fuentesCerca(c), sw = f.reduce((s,x)=>s+x.w,0);
+  return {s:0.05 + 0.95*(1-Math.exp(-sw/1.5)), n:f.length, fuentes:f};
+}
+
+/* ---------- Pronóstico (insumo) ---------- */
+function clavelinea(c){ return 'linea.'+c.id+'.'+new Date().getMonth(); }
+function lineaPrevia(c){ return N.guardado.leer(clavelinea(c), null) ?? N.lineaNieveReferencia(c); }
+/* Si en los últimos 3 días nevó más abajo que la línea de referencia, la nieve previa baja hasta esa cota. */
+function lineaEfectiva(c){
+  const base = lineaPrevia(c), r = estado.met[c.id];
+  if (!r || !r.pasos) return {L:base, ajuste:null};
+  const ahora = Date.now();
+  const nev = r.pasos.filter(s=>s.t < ahora && s.t > ahora-72*36e5 && s.p>=0.5 && s.h0!=null);
+  if (!nev.length) return {L:base, ajuste:null};
+  const minimo = nev.reduce((a,s)=>(s.h0-C.DESFASE_LINEA_NIEVE) < (a.h0-C.DESFASE_LINEA_NIEVE) ? s : a);
+  const cota = Math.round((minimo.h0 - C.DESFASE_LINEA_NIEVE)/50)*50;
+  return cota < base ? {L:cota, ajuste:{desde:base, t:minimo.t, mm:nev.reduce((a,s)=>a+s.p,0)}} : {L:base, ajuste:null};
+}
+const OM_HORARIAS = ['temperature_2m','relative_humidity_2m','precipitation_probability','precipitation','rain','showers','snowfall','snow_depth','cloud_cover',
+  'wind_speed_10m','wind_direction_10m','wind_gusts_10m','soil_moisture_0_to_1cm','soil_moisture_9_to_27cm','freezing_level_height',
+  'total_column_integrated_water_vapour','wet_bulb_temperature_2m','cape','boundary_layer_height','sunshine_duration','shortwave_radiation',
+  'temperature_850hPa','temperature_700hPa','temperature_600hPa','temperature_500hPa','relative_humidity_700hPa',
+  'wind_speed_700hPa','wind_speed_500hPa','wind_direction_700hPa','wind_direction_500hPa','geopotential_height_700hPa','geopotential_height_500hPa'];
+const OM_ACTUALES = ['temperature_2m','precipitation','rain','snowfall','wind_speed_10m','wind_direction_10m','wind_gusts_10m','cloud_cover','freezing_level_height'];
+const OM_DIARIAS = ['precipitation_sum','rain_sum','snowfall_sum','precipitation_hours','temperature_2m_max','temperature_2m_min','wind_gusts_10m_max','wind_direction_10m_dominant','shortwave_radiation_sum'];
+const OM_MINIMAS = ['precipitation','temperature_2m','freezing_level_height','wind_speed_10m','wind_direction_10m','wind_gusts_10m','shortwave_radiation','relative_humidity_2m'];
+/* Isoterma 0 °C desde el perfil de temperatura en niveles de presión (respaldo). */
+function isotermaPerfil(h, i){
+  const niv = [[850,1500],[700,3000],[600,4200],[500,5600]].map(([p,zn])=>{
+    const T = (h['temperature_'+p+'hPa']||[])[i], z = (h['geopotential_height_'+p+'hPa']||[])[i];
+    return T==null ? null : {z: z!=null ? z : zn, T};
+  }).filter(Boolean).sort((a,b)=>a.z-b.z);
+  if (niv.length < 2) return null;
+  if (niv[0].T <= 0) return niv[0].z + niv[0].T/0.0065;
+  for (let k=1; k<niv.length; k++) if (niv[k-1].T > 0 && niv[k].T <= 0) return niv[k-1].z + niv[k-1].T/(niv[k-1].T-niv[k].T)*(niv[k].z-niv[k-1].z);
+  return null;
+}
+async function openMeteo(c){
+  const base = {latitude:c.lat, longitude:c.lon, wind_speed_unit:'ms', timezone:'America/Santiago', past_days:'3', forecast_days:'4'};
+  const url = extra => 'https://api.open-meteo.com/v1/forecast?'+new URLSearchParams(Object.assign({}, base, extra));
+  let d, reducida = false;
+  try { d = await N.json(url({hourly:OM_HORARIAS.join(','), current:OM_ACTUALES.join(','), daily:OM_DIARIAS.join(',')})); if (d.error) throw new Error(d.reason); }
+  catch(e){ d = await N.json(url({hourly:OM_MINIMAS.join(',')})); reducida = true; }
+  if (d.error) throw new Error(d.reason||'error de Open-Meteo');
+  const h = d.hourly, z = d.elevation, g = k => (h[k]||[]);
+  const pasos = h.time.map((t,i)=>{
+    let h0 = g('freezing_level_height')[i], origenH0 = 'modelo';
+    if (h0==null){ h0 = isotermaPerfil(h, i); origenH0 = 'perfil'; }
+    if (h0==null && g('temperature_2m')[i]!=null && z!=null){ h0 = z + g('temperature_2m')[i]/0.0065; origenH0 = 'superficie'; }
+    const pp = g('precipitation_probability')[i];
+    return {t:N.parseFecha(t), dur:1, p:g('precipitation')[i]||0, h0, origenH0,
+      ws:g('wind_speed_10m')[i], wd:g('wind_direction_10m')[i], wg:g('wind_gusts_10m')[i], sw:g('shortwave_radiation')[i],
+      rh:g('relative_humidity_2m')[i], pop: pp!=null ? pp/100 : null, lluvia:g('rain')[i], chubasco:g('showers')[i], nieve:g('snowfall')[i],
+      sd:g('snow_depth')[i], tcwv:g('total_column_integrated_water_vapour')[i], cape:g('cape')[i], tw:g('wet_bulb_temperature_2m')[i],
+      nubes:g('cloud_cover')[i], hs:g('soil_moisture_0_to_1cm')[i], pbl:g('boundary_layer_height')[i], ws700:g('wind_speed_700hPa')[i], wd700:g('wind_direction_700hPa')[i]};
+  });
+  pasos.actual = d.current || null; pasos.diario = d.daily || null; pasos.elev = z; pasos.crudo = h; pasos.reducida = reducida;
+  return pasos;
+}
+async function owm(c){
+  if (!estado.clave) throw new Error('falta la clave');
+  let d;
+  try { d = await N.json('https://api.openweathermap.org/data/2.5/forecast?'+new URLSearchParams({lat:c.lat, lon:c.lon, units:'metric', appid:estado.clave})); }
+  catch(e){ throw new Error(/401/.test(e.message) ? 'la clave no es válida o aún no se activa' : e.message); }
+  return (d.list||[]).map(it=>{
+    const m = it.main||{}, w = it.wind||{};
+    const z = (m.grnd_level && m.sea_level) ? 44330*(1-Math.pow(m.grnd_level/m.sea_level, 1/5.255)) : null;
+    return {t:it.dt*1000, dur:3, p:((it.rain||{})['3h']||0)+((it.snow||{})['3h']||0), h0: z!=null ? z + m.temp/0.0065 : null, ws:w.speed, wd:w.deg, wg:w.gust, pop:it.pop};
+  });
+}
+async function cargar(){
+  el('actualizado').textContent = 'Actualizando...';
+  const msgs = [];
+  await Promise.all(N.CUENCAS.map(async c=>{
+    const r = {};
+    if (estado.fuente==='owm'){
+      try { r.pasos = await owm(c); r.fuente = 'OpenWeatherMap'; }
+      catch(e){ r.errorOWM = e.message; }
+    }
+    if (!r.pasos){ try { r.pasos = await openMeteo(c); r.fuente = 'Open-Meteo'; } catch(e){ r.error = e.message; } }
+    estado.met[c.id] = r;
+  }));
+  const e1 = Object.values(estado.met).find(r=>r.errorOWM);
+  if (e1) msgs.push(`OpenWeatherMap no respondió (${e1.errorOWM}). Se usa Open-Meteo.`);
+  if (Object.values(estado.met).every(r=>!r.pasos)) msgs.push('No se pudo obtener el pronóstico: la predicción muestra solo la susceptibilidad.');
+  el('mensajes').innerHTML = msgs.map(m=>`<p class="error">${N.esc(m)}</p>`).join('');
+  estado.actualizado = new Date();
+  pintar();
+}
+
+/* ---------- Condición meteorológica ---------- */
+function ventana(pasos){ const a = Date.now(), b = a + HORAS*36e5; return (pasos||[]).filter(s=>s.t + s.dur*36e5 > a && s.t <= b); }
+function condROS(c){
+  const r = estado.met[c.id]; if (!r || !r.pasos) return null;
+  const Le = lineaEfectiva(c), L = Le.L, v = ventana(r.pasos);
+  let E = 0, lluvia = 0, total = 0, h0max = -Infinity, ini = null, fin = null, franjaMax = 0, capeMax = 0, tcwvMax = 0, chub = 0;
+  v.forEach(s=>{
+    if (s.h0==null) return;
+    s.franja = Math.min(s.h0 - C.DESFASE_LINEA_NIEVE, c.cumbre) - L;
+    total += s.p; h0max = Math.max(h0max, s.h0); if (s.cape!=null) capeMax = Math.max(capeMax, s.cape); if (s.tcwv!=null) tcwvMax = Math.max(tcwvMax, s.tcwv); chub += s.chubasco||0;
+    if (s.franja > 0){ E += s.p*Math.min(1, s.franja/600); lluvia += s.p;
+      if (s.p>=0.2){ ini ??= s.t; fin = s.t + s.dur*36e5; franjaMax = Math.max(franjaMax, s.franja); } }
+  });
+  return {t:1-Math.exp(-0.095*E), total, lluvia, h0max:isFinite(h0max)?h0max:null, ini, fin, franjaMax, L, ajuste:Le.ajuste, capeMax, tcwvMax, chub, pasos:v, fuente:r.fuente, actual:r.pasos.actual};
+}
+function condPolvo(c){
+  const r = estado.met[c.id]; if (!r || !r.pasos) return null;
+  const Le = lineaEfectiva(c), v = ventana(r.pasos), fu = fuentesCerca(c), L = Le.L;
+  let E = 0, horas = 0, ini = null, fin = null, wsMax = 0, sol = 0;
+  const conNieve = L < c.cumbre - 300;
+  v.forEach(s=>{
+    s.arriba = [];
+    if (s.ws!=null) wsMax = Math.max(wsMax, s.ws);
+    if (s.sw!=null && s.sw>600) sol += s.dur;
+    if (!conNieve || s.p>=0.1 || s.ws==null || s.wd==null || s.ws<VIENTO_MIN) return;
+    s.arriba = fu.filter(f=>N.difAngulo(s.wd, f.rumbo)<=45);
+    const w = s.arriba.reduce((a,f)=>a+f.w,0);
+    const seco = s.rh==null ? 1 : s.rh < 40 ? 1 : s.rh < 70 ? 0.6 : 0.3;   // el aire húmedo levanta menos polvo
+    if (w>0){ E += s.dur*(s.ws/VIENTO_MIN)*w*seco; horas += s.dur; ini ??= s.t; fin = s.t + s.dur*36e5; }
+  });
+  return {t:1-Math.exp(-E/10), horas, ini, fin, wsMax, sol, conNieve, fuentes:fu, pasos:v, fuente:r.fuente, L, ajuste:Le.ajuste, actual:r.pasos.actual};
+}
+
+/* ---------- Predicción por lugar ---------- */
+function predecir(l){
+  const c = cuencaDe(l.origen);
+  if (estado.fen==='ros'){
+    const s = suscROS(l), m = condROS(c);
+    return {s:s.s, sInfo:s, m, t:m?m.t:null, p: m ? m.t*(0.35+0.65*s.s) : null, c};
+  }
+  const s = suscPolvo(c), m = condPolvo(c);
+  return {s:s.s, sInfo:s, m, t:m?m.t:null, p: m ? m.t*(0.35+0.65*s.s) : null, c};
+}
+function prediccionCuenca(c){
+  const ls = N.LUGARES.filter(l=>l.origen===c.id).map(predecir);
+  return {p: Math.max(...ls.map(x=>x.p??-1)), s: Math.max(...ls.map(x=>x.s))};
+}
+
+/* ---------- Grilla sobre toda el área de estudio ---------- */
+const PASO = 0.15, GRILLA_VARS = ['precipitation','freezing_level_height','temperature_2m','wind_speed_10m','wind_direction_10m','relative_humidity_2m'];
+const grilla = {datos:null, t:null, capa: window.L ? L.layerGroup() : null, rect:[], error:null};
+let panelMapa = null, fcSub = null;
+function puntosGrilla(){
+  const a = C.AOI, pts = [];
+  for (let la = a.s + PASO/2; la < a.n; la += PASO) for (let lo = a.w + PASO/2; lo < a.e; lo += PASO) pts.push([+la.toFixed(3), +lo.toFixed(3)]);
+  return pts;
+}
+async function cargarGrilla(forzar){
+  const cache = N.guardado.leer('grilla', null);
+  if (!forzar && cache && cache.paso===PASO && Date.now()-cache.t < 60*60000){ grilla.datos = cache.datos; grilla.t = cache.t; return; }
+  const pts = puntosGrilla(), datos = {tiempo:null, celdas:[]};
+  for (let k=0; k<pts.length; k+=50){
+    const parte = pts.slice(k, k+50);
+    const q = new URLSearchParams({latitude:parte.map(p=>p[0]).join(','), longitude:parte.map(p=>p[1]).join(','), hourly:GRILLA_VARS.join(','),
+      wind_speed_unit:'ms', timezone:'America/Santiago', past_days:'3', forecast_days:'4'});
+    let d = await N.json('https://api.open-meteo.com/v1/forecast?'+q, {timeout:60000});
+    if (!Array.isArray(d)) d = [d];
+    d.forEach((x,i)=>{
+      if (!x || x.error || !x.hourly) return;
+      const h = x.hourly;
+      datos.tiempo ||= h.time;
+      datos.celdas.push({lat:parte[i][0], lon:parte[i][1], z:x.elevation, p:h.precipitation, h0:h.freezing_level_height, t2:h.temperature_2m, ws:h.wind_speed_10m, wd:h.wind_direction_10m, rh:h.relative_humidity_2m});
+    });
+  }
+  if (!datos.celdas.length) throw new Error('sin datos');
+  grilla.datos = datos; grilla.t = Date.now();
+  N.guardado.escribir('grilla', {paso:PASO, t:grilla.t, datos});
+}
+function cuencaCercana(cel){ return N.CUENCAS.reduce((a,c)=>N.distanciaKm(c,cel) < N.distanciaKm(a,cel) ? c : a); }
+/* Evalúa una celda: en lluvia sobre nieve, la celda está sobre la nieve previa y bajo la línea de nieve en tormenta. */
+function evaluarCelda(cel){
+  const T = grilla.datos.tiempo, ahora = Date.now(), fin = ahora + HORAS*36e5;
+  if (!cel.tt) cel.tt = T.map(N.parseFecha);
+  const isot = i => cel.h0 && cel.h0[i]!=null ? cel.h0[i] : (cel.t2 && cel.t2[i]!=null && cel.z!=null ? cel.z + cel.t2[i]/0.0065 : null);
+  let L = lineaPrevia(cuencaCercana(cel));
+  cel.tt.forEach((t,i)=>{ if (t < ahora && t > ahora-72*36e5 && (cel.p[i]||0) >= 0.5 && isot(i)!=null) L = Math.min(L, isot(i)-C.DESFASE_LINEA_NIEVE); });
+  const conNieve = cel.z!=null && cel.z > L;
+  let E = 0, mm = 0, h0max = -Infinity, horas = 0;
+  if (estado.fen==='ros'){
+    cel.tt.forEach((t,i)=>{
+      if (t <= ahora-36e5 || t > fin) return;
+      const h0 = isot(i); if (h0==null) return;
+      h0max = Math.max(h0max, h0);
+      if (conNieve && cel.z < h0 - C.DESFASE_LINEA_NIEVE && (cel.p[i]||0) > 0){ E += cel.p[i]; mm += cel.p[i]; }
+    });
+    return {prob: 1-Math.exp(-0.095*E), mm, h0max: isFinite(h0max)?h0max:null, L, conNieve};
+  }
+  const fu = fuentesCerca(cel), S = 0.05 + 0.95*(1-Math.exp(-fu.reduce((a,f)=>a+f.w,0)/1.5));
+  if (conNieve) cel.tt.forEach((t,i)=>{
+    if (t <= ahora-36e5 || t > fin) return;
+    const ws = cel.ws && cel.ws[i], wd = cel.wd && cel.wd[i], rh = cel.rh && cel.rh[i];
+    if (ws==null || wd==null || ws < VIENTO_MIN || (cel.p[i]||0) >= 0.1) return;
+    const w = fu.filter(f=>N.difAngulo(wd, f.rumbo)<=45).reduce((a,f)=>a+f.w,0);
+    const seco = rh==null ? 1 : rh < 40 ? 1 : rh < 70 ? 0.6 : 0.3;
+    if (w>0){ E += (ws/VIENTO_MIN)*w*seco; horas++; }
+  });
+  return {prob: (1-Math.exp(-E/10))*(0.35+0.65*S), horas, L, conNieve, S};
+}
+function asignarCeldas(){
+  if (!fcSub || !grilla.datos) return;
+  grilla.datos.celdas.forEach(c=>{ c.sub = N.poligonoQueContiene(fcSub, c.lon, c.lat); });
+}
+function pintarGrilla(){
+  if (!mapa || !grilla.capa) return;
+  grilla.capa.clearLayers();
+  if (!grilla.datos) return;
+  const ver = estado.modo==='prob';
+  grilla.datos.celdas.forEach(c=>{
+    const ev = evaluarCelda(c); c.ev = ev;
+    if (!ver) return;
+    const niv = NIVEL(ev.prob), col = N.COL['riesgo-'+niv];
+    const rect = L.rectangle([[c.lat-PASO/2, c.lon-PASO/2],[c.lat+PASO/2, c.lon+PASO/2]], {pane:'cuencas', weight:0, fillColor:col, fillOpacity: niv==='bajo' ? 0 : niv==='medio' ? .35 : .5});
+    const txt = estado.fen==='ros'
+      ? `${pct(ev.prob)} de lluvia sobre nieve<br>Altura ${N.num(c.z)} m, nieve previa desde ${N.num(ev.L)} m${ev.conNieve ? '' : ' (sin nieve aquí)'}<br>${N.num(ev.mm,1)} mm sobre nieve, isoterma máx. ${ev.h0max!=null?N.num(ev.h0max)+' m':'sin dato'}`
+      : `${pct(ev.prob)} de polvo sobre nieve<br>Altura ${N.num(c.z)} m${ev.conNieve ? '' : ' (sin nieve aquí)'}<br>${N.num(ev.horas)} horas secas con viento desde fuentes de polvo`;
+    rect.bindTooltip(txt, {sticky:true}).addTo(grilla.capa);
+    rect.on('click', e=>{
+      const fav = (cond, parcial)=>cond?'si':parcial?'parcial':'no';
+      const items = estado.fen==='ros' ? [
+        factor('Altura del punto', N.num(c.z)+' m', 'parcial', ''),
+        factor('Nieve en el suelo desde', N.num(ev.L)+' m', ev.conNieve?'si':'no', ev.conNieve?'Este punto tiene nieve.':'Este punto está bajo la nieve: no puede llover sobre nieve.'),
+        factor('Isoterma 0 °C máxima', ev.h0max!=null?N.num(ev.h0max)+' m':'sin dato', ev.h0max==null?'nd':fav(ev.h0max-C.DESFASE_LINEA_NIEVE > c.z, false), ev.h0max!=null?`La lluvia llega hasta ${N.num(ev.h0max-C.DESFASE_LINEA_NIEVE)} m.`:''),
+        factor('Lluvia sobre nieve en 72 h', N.num(ev.mm,1)+' mm', fav(ev.mm>=10, ev.mm>=1), '')
+      ] : [
+        factor('Nieve en este punto', ev.conNieve?'sí':'no', ev.conNieve?'si':'no', `Nieve desde ${N.num(ev.L)} m.`),
+        factor('Horas secas con viento desde fuentes', N.num(ev.horas)+' h', fav(ev.horas>=6, ev.horas>=1), ''),
+        factor('Cercanía a fuentes de polvo', pct(ev.S), fav(ev.S>=0.5, ev.S>=0.2), 'Susceptibilidad del punto según faenas y caminos.')
+      ];
+      L.popup({maxWidth:340}).setLatLng(e.latlng).setContent(`<div class="pop-porque"><h4>Por qué ${pct(ev.prob)} en este punto</h4><ul class="factores">${items.join('')}</ul><p class="formula">Celda de unos 15 km centrada en ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}. Puntos: rojo favorece, ámbar en parte, verde no favorece.</p></div>`).openOn(mapa);
+    });
+  });
+}
+function valorSubcuenca(f){
+  if (!grilla.datos) return null;
+  const cs = grilla.datos.celdas.filter(c=>c.sub===f && c.ev);
+  return cs.length ? Math.max(...cs.map(c=>c.ev.prob)) : null;
+}
+async function actualizarGrilla(forzar){
+  if (panelMapa) panelMapa.estado('grilla', 'Cargando unos '+puntosGrilla().length+' puntos...');
+  try{
+    await cargarGrilla(forzar); asignarCeldas();
+    const t = new Date(grilla.t);
+    if (panelMapa) panelMapa.estado('grilla', `${grilla.datos.celdas.length} puntos de Open-Meteo, de las ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}. Se renueva cada hora.`);
+  }catch(e){ if (panelMapa) panelMapa.estado('grilla', 'No disponible: '+e.message+'. Se muestran solo las cuencas de origen.'); }
+  pintar();
+}
+
+/* ---------- Mapa ---------- */
+const mapa = N.crearMapa('mapa');
+let capaCuencas = null, poliOrigen = {}, pins = {};
+const grupoCuencas = mapa ? L.layerGroup() : null;
+/* Cuenca donde se calcula la predicción del lugar elegido: su subcuenca DGA, el punto de pronóstico y la unión con el lugar. */
+const grupoCalculo = mapa ? L.layerGroup() : null;
+let encuadreCalculo = null;
+if (mapa){
+  const ref = N.capasReferencia(mapa, [
+    {id:'grilla', etiqueta:'Grilla de predicción (15 km)', muestra:`<span class="cuadro" style="background:${N.COL['riesgo-alto']};opacity:.6"></span>`, capa:grilla.capa},
+    {id:'calculo', etiqueta:'Cuenca de cálculo del lugar elegido', muestra:'<span class="cuadro" style="background:transparent;border:3px solid var(--roca)"></span>', capa:grupoCalculo},
+    {id:'subcuencas', etiqueta:'Subcuencas DGA', muestra:'<span class="cuadro" style="background:var(--papel);border:1.5px solid var(--roca-2)"></span>', capa:grupoCuencas}], {caminos:true});
+  panelMapa = ref.panel;
+  ref.panel.estado('subcuencas','Cargando...');
+  N.cargarCapa('subcuencas').then(({fc,fuente})=>{
+    N.CUENCAS.forEach(c=>{ poliOrigen[c.id] = N.poligonoQueContiene(fc, c.lon, c.lat); });
+    fcSub = fc; asignarCeldas();
+    capaCuencas = L.geoJSON(fc, {pane:'cuencas', style:()=>({}), onEachFeature:(f,l)=>l.on('click', ()=>{
+      const c = N.CUENCAS.find(c=>poliOrigen[c.id]===f); if (c){ const lu = N.LUGARES.filter(x=>x.origen===c.id).map(x=>({x, p:predecir(x).p||0})).sort((a,b)=>b.p-a.p)[0]; if (lu) seleccionar(lu.x.id); }
+    })}).addTo(grupoCuencas);
+    ref.panel.estado('subcuencas','Fuente: '+fuente);
+    pintar();
+  }).catch(()=>{ ref.panel.estado('subcuencas','No disponible. Se muestran solo los lugares.'); ref.panel.estado('calculo','Sin la capa de subcuencas solo se muestra el punto de pronóstico. Ejecuta herramientas/descargar_capas.py.'); pintar(); });
+}
+N.cargarCapa('faenas').then(({fc})=>{ estado.faenas = fc.features.filter(f=>f.geometry && f.geometry.type==='Point'); pintar(); }).catch(()=>{});
+function colorValor(v){
+  if (v==null || v<0) return N.COL['roca-3'];
+  if (estado.modo==='prob') return N.COL['riesgo-'+NIVEL(v)];
+  return N.SECUENCIAL[Math.min(4, 1+Math.floor(v*4))];
+}
+function pintarMapa(){
+  if (!mapa) return;
+  pintarGrilla();
+  if (capaCuencas) capaCuencas.eachLayer(ly=>{
+    const c = N.CUENCAS.find(c=>poliOrigen[c.id]===ly.feature);
+    const vg = estado.modo==='prob' ? valorSubcuenca(ly.feature) : null;
+    if (vg!=null){
+      const col = colorValor(vg), nom = N.nombreDe(ly.feature.properties) || 'Subcuenca';
+      ly.setStyle({color: c ? col : (vg>=0.2 ? col : N.COL['borde-cuenca']), weight: c ? 2.5 : vg>=0.2 ? 2 : .8, opacity: vg>=0.2 || c ? 1 : .55, fillOpacity:0});
+      ly.unbindTooltip(); ly.bindTooltip(`${N.esc(nom)}${c?' (origen de '+c.nom+')':''}: hasta ${pct(vg)}`, {sticky:true});
+      return;
+    }
+    if (!c){ ly.setStyle({color:N.COL['borde-cuenca'], weight:.8, opacity:.55, fillOpacity:0}); ly.unbindTooltip(); return; }
+    const pc = prediccionCuenca(c), v = estado.modo==='prob' ? pc.p : pc.s, col = colorValor(v);
+    ly.setStyle({color:col, weight:2.5, opacity:1, fillColor:col, fillOpacity:.35});
+    ly.unbindTooltip(); ly.bindTooltip(`${c.nom} (origen): ${v>=0 ? pct(v) : 'sin datos'}`, {sticky:true});
+  });
+  pintarCalculo();
+  N.LUGARES.forEach(l=>{
+    const pr = predecir(l), v = estado.modo==='prob' ? pr.p : pr.s, col = colorValor(v);
+    const html = `<div class="pin${l.lado==='izq'?' izq':''}"><i style="${l.id===estado.sel?'background:var(--hielo);box-shadow:0 0 0 2px var(--hielo)':''}"></i><span style="border-color:${col}">${N.esc(l.corto||l.nom)}: ${v!=null ? pct(v) : 'sin datos'}</span></div>`;
+    if (!pins[l.id]){ pins[l.id] = L.marker([l.lat,l.lon], {icon:L.divIcon({className:'', html, iconSize:null}), title:l.nom}).addTo(mapa); pins[l.id].on('click', ()=>seleccionar(l.id)); }
+    else pins[l.id].setIcon(L.divIcon({className:'', html, iconSize:null}));
+    pins[l.id].setZIndexOffset(l.id===estado.sel?1000:0);
+  });
+}
+
+function pintarCalculo(){
+  if (!grupoCalculo) return;
+  grupoCalculo.clearLayers(); encuadreCalculo = null;
+  const l = N.LUGARES.find(x=>x.id===estado.sel); if (!l) return;
+  const c = cuencaDe(l.origen), poli = poliOrigen[c.id], pr = predecir(l);
+  const col = pr.p!=null ? colorValor(estado.modo==='prob' ? pr.p : pr.s) : N.COL.roca;
+  const nom = poli ? (N.nombreDe(poli.properties) || 'subcuenca sin nombre') : null;
+  if (poli){
+    // halo blanco y borde grueso para que se distinga sobre el satélite y la grilla
+    const halo = L.geoJSON(poli, {pane:'lineas', interactive:false, style:{color:'#fff', weight:7, opacity:.9, fill:false}}).addTo(grupoCalculo);
+    L.geoJSON(poli, {pane:'lineas', interactive:false, style:{color:N.COL.roca, weight:3.5, opacity:1, fillColor:col, fillOpacity:.12}}).addTo(grupoCalculo);
+    encuadreCalculo = halo.getBounds();
+    const b = halo.getBounds();
+    L.marker([b.getNorth(), (b.getWest()+b.getEast())/2], {interactive:false, keyboard:false, icon:L.divIcon({className:'', html:`<div class="etq-calculo" style="transform:translate(-50%,-120%);white-space:nowrap">Cuenca de cálculo: ${N.esc(nom)}</div>`, iconSize:null})}).addTo(grupoCalculo);
+  }
+  L.polyline([[c.lat,c.lon],[l.lat,l.lon]], {pane:'lineas', interactive:false, color:N.COL.roca, weight:2, dashArray:'5 5', opacity:.9}).addTo(grupoCalculo);
+  L.marker([c.lat,c.lon], {keyboard:false, icon:L.divIcon({className:'', html:'<div class="mk-calculo"></div>', iconSize:[14,14]})})
+    .bindTooltip(`Punto de pronóstico de ${N.esc(c.nom)}<br>${c.lat.toFixed(3)}, ${c.lon.toFixed(3)}${pr.m && pr.m.z!=null ? ', '+N.num(pr.m.z)+' m' : ''}<br>Aquí se calcula la condición meteorológica para ${N.esc(l.nom)}.`).addTo(grupoCalculo);
+  if (!encuadreCalculo) encuadreCalculo = L.latLngBounds([[c.lat,c.lon],[l.lat,l.lon]]);
+  encuadreCalculo = encuadreCalculo.extend([l.lat,l.lon]);
+  if (panelMapa) panelMapa.estado('calculo', poli ? `${nom}: subcuenca DGA que contiene el punto de pronóstico de ${c.nom}.` : 'Sin la capa de subcuencas solo se muestra el punto de pronóstico.');
+  // texto bajo el resumen
+  const celdas = grilla.datos && poli ? grilla.datos.celdas.filter(x=>x.sub===poli && x.ev) : [];
+  const g = celdas.length ? ` La grilla tiene ${celdas.length} ${celdas.length===1?'celda':'celdas'} dentro de esta subcuenca; la más alta marca ${pct(Math.max(...celdas.map(x=>x.ev.prob)))}.` : '';
+  const caja = document.getElementById('dondeCalcula');
+  if (caja) caja.innerHTML = `<span class="muestra"></span><span>Dónde se calcula: ${poli ? `subcuenca ${N.esc(nom)} (borde negro en el mapa)` : 'cuenca de '+N.esc(c.nom)+' (la capa de subcuencas no está cargada)'}, con el pronóstico del punto ${c.lat.toFixed(3)}, ${c.lon.toFixed(3)} (círculo blanco), unido con una línea a ${N.esc(l.nom)}.${g} <a href="#" id="verCalculo">Ver en el mapa</a></span>`;
+  const v = document.getElementById('verCalculo'); if (v) v.onclick = e=>{ e.preventDefault(); enfocarCalculo(); document.getElementById('mapa').scrollIntoView({behavior:'smooth', block:'center'}); };
+}
+function enfocarCalculo(){ if (mapa && encuadreCalculo) mapa.flyToBounds(encuadreCalculo, {padding:[40,40], maxZoom:11, duration:.6}); }
+
+/* ---------- Por qué: variables que explican la predicción ---------- */
+const MARCA = {si:N.COL['riesgo-alto'], parcial:N.COL['riesgo-medio'], no:N.COL['riesgo-bajo'], nd:N.COL['roca-3']};
+const ETQ_MARCA = {si:'favorece', parcial:'favorece en parte', no:'no favorece', nd:'sin dato'};
+function factorHTML(nombre, valor, estadoF, detalle){
+  return `<li><span class="marca" style="background:${MARCA[estadoF]}" title="${ETQ_MARCA[estadoF]}"></span><span>${nombre}</span><span class="v">${valor}</span>${detalle?`<span class="x">${detalle}</span>`:''}</li>`;
+}
+const factor = factorHTML;
+function porQue(l){
+  const pr = predecir(l), c = pr.c, m = pr.m, f = [], crudos = [];
+  const factor = (n,v,e,d)=>{ crudos.push({n,v,e,d}); return factorHTML(n,v,e,d); };
+  if (estado.fen==='ros'){
+    if (m){
+      f.push(factor('Precipitación en 72 h', N.num(m.total,1)+' mm', m.total>=10?'si':m.total>=2?'parcial':'no', m.total>=2 ? 'Hay agua suficiente para un evento.' : 'Casi sin precipitación: no hay evento.'));
+      const S = m.h0max!=null ? m.h0max - C.DESFASE_LINEA_NIEVE : null;
+      f.push(factor('Isoterma 0 °C máxima', m.h0max!=null?N.num(m.h0max)+' m':'sin dato', S==null?'nd':S>m.L+400?'si':S>m.L?'parcial':'no',
+        S!=null ? `La lluvia llega hasta ${N.num(S)} m (isoterma menos 280 m<span class="info-papers">, Schauwecker et al. 2022</span>). Sobre 3.000 m es una tormenta cálida<span class="info-papers"> (Garreaud 2013)</span>.` : ''));
+      f.push(factor('Nieve en el suelo desde', N.num(m.L)+' m', 'parcial', m.ajuste ? `Bajó desde ${N.num(m.ajuste.desde)} m por la nevada del ${hora(m.ajuste.t)}.` : 'Valor de referencia del mes; corregible abajo.'));
+      f.push(factor('Lluvia que cae sobre nieve', N.num(m.lluvia,1)+' mm', m.lluvia>=10?'si':m.lluvia>=1?'parcial':'no',
+        m.lluvia>=0.5 ? `Franja expuesta de hasta ${N.num(m.franjaMax)} m de espesor, entre ${hora(m.ini)} y ${hora(m.fin)}.` : 'La lluvia no alcanza la nieve.'));
+      if (m.tcwvMax) f.push(factor('Vapor de agua máximo', N.num(m.tcwvMax)+' kg/m²', m.tcwvMax>=30?'si':m.tcwvMax>=20?'parcial':'no', 'Sobre 30 kg/m² se asocia a lluvias extremas y ríos atmosféricos<span class="info-papers"> (Valenzuela y Garreaud 2019)</span>.'));
+      if (m.capeMax) f.push(factor('Energía convectiva (CAPE)', N.num(m.capeMax)+' J/kg', m.capeMax>=500?'si':m.capeMax>=200?'parcial':'no', 'Tormentas de verano y aluviones.'));
+    } else f.push(factor('Pronóstico', 'sin datos', 'nd', ''));
+    f.push(factor('Historial del lugar', pr.sInfo.n+' eventos', pr.s>=0.5?'si':pr.s>=0.25?'parcial':'no', `${N.num(pr.sInfo.tasa,2)} eventos ponderados por año en el catastro.`));
+  } else {
+    if (m){
+      f.push(factor('Nieve expuesta', m.conNieve?'sí':'no', m.conNieve?'si':'no', `Nieve desde ${N.num(m.L)} m.`));
+      const cerca = m.fuentes[0];
+      f.push(factor('Fuentes de polvo a menos de 35 km', String(m.fuentes.length), m.fuentes.length>=3?'si':m.fuentes.length?'parcial':'no', cerca?`La más cercana: ${N.esc(cerca.nom)}, a ${N.num(cerca.d)} km.`:''));
+      f.push(factor('Horas secas con viento desde las fuentes', N.num(m.horas)+' h', m.horas>=6?'si':m.horas>=1?'parcial':'no', `Viento de ${VIENTO_MIN} m/s o más soplando hacia la cuenca.`));
+      f.push(factor('Viento máximo', N.num(m.wsMax,1)+' m/s', m.wsMax>=10?'si':m.wsMax>=VIENTO_MIN?'parcial':'no', ''));
+      const rhs = m.pasos.map(s=>s.rh).filter(v=>v!=null);
+      if (rhs.length){ const rmin = Math.min(...rhs); f.push(factor('Humedad relativa mínima', N.num(rmin)+' %', rmin<40?'si':rmin<70?'parcial':'no', 'El aire seco levanta más polvo.')); }
+      f.push(factor('Horas de sol fuerte', N.num(m.sol)+' h', m.sol>=12?'si':m.sol>=4?'parcial':'no', 'Aceleran la fusión de la nieve con polvo.'));
+    } else f.push(factor('Pronóstico', 'sin datos', 'nd', ''));
+  }
+  const formula = pr.p!=null ? `Probabilidad ${pct(pr.p)} = condición meteorológica ${pct(pr.t)} × (0,35 + 0,65 × susceptibilidad ${pct(pr.s)}).` : '';
+  porQue.ultimo = {crudos, pr};
+  const clave = `<span style="color:${MARCA.si}">rojo</span> favorece el evento, <span style="color:${MARCA.parcial}">ámbar</span> en parte, <span style="color:${MARCA.no}">verde</span> no lo favorece.`;
+  return `<h4>Por qué ${pr.p!=null?pct(pr.p):''} en ${N.esc(l.nom)}</h4><ul class="factores">${f.join('')}</ul><p class="formula">${formula} Datos de ${c.nom}${m?', '+m.fuente:''}.</p><p class="formula">Puntos: ${clave}</p>`;
+}
+/* ---------- Comentario: automático o con IA ---------- */
+const comentarios = {};
+const claveIA = ()=>N.guardado.leer('ia', '');
+const textoPlano = h => { const d = document.createElement('div'); d.innerHTML = h||''; if (!N.papersActivos()) d.querySelectorAll('.info-papers').forEach(x=>x.remove()); return d.textContent.trim(); };
+function claveComentario(l){ return [l.id, estado.fen, estado.actualizado ? estado.actualizado.getTime() : 0].join('|'); }
+function bloqueComentario(l){
+  const c = comentarios[claveComentario(l)];
+  const cuerpo = !c ? '<p class="muted small">Pide un comentario para interpretar estas variables.</p>'
+    : c.cargando ? '<p class="muted small">Generando comentario...</p>'
+    : `<p class="texto">${N.esc(c.texto)}</p><p class="formula">${N.esc(c.fuente)}</p>`;
+  return `<div class="comentario"><div class="fila"><h4>Comentario</h4><button class="btn sec btn-ia" type="button" data-comentar="${l.id}">${claveIA() ? 'Comentar con IA' : 'Generar comentario'}</button></div>${cuerpo}</div>`;
+}
+function comentarioLocal(l, pr, crudos){
+  const nivel = pr.p==null ? null : NOM_NIVEL[NIVEL(pr.p)];
+  const fen = estado.fen==='ros' ? 'lluvia sobre nieve' : 'polvo sobre nieve';
+  if (pr.p==null) return `No hay pronóstico disponible para ${l.nom}; solo se conoce su susceptibilidad (${pct(pr.s)}).`;
+  const fav = crudos.filter(f=>f.e==='si').map(f=>f.n.charAt(0).toLowerCase()+f.n.slice(1));
+  const lim = crudos.filter(f=>f.e==='no').map(f=>f.n.charAt(0).toLowerCase()+f.n.slice(1));
+  const lista = a => a.length<=1 ? a.join('') : a.slice(0,-1).join(', ')+' y '+a[a.length-1];
+  const o = [`La probabilidad de ${fen} en ${l.nom} es ${nivel} (${pct(pr.p)}).`];
+  if (fav.length) o.push(`La empujan hacia arriba: ${lista(fav)}.`);
+  if (lim.length) o.push(`La limitan: ${lista(lim)}.`);
+  if (pr.s >= 0.5 && pr.t < 0.2) o.push('El lugar es propenso a estos eventos, pero el pronóstico de los próximos 3 días no muestra condiciones para que ocurra.');
+  else if (pr.t >= 0.5 && pr.s < 0.3) o.push('El pronóstico es favorable aunque el lugar tiene pocos eventos registrados: sería un evento poco habitual allí, o el catastro de prensa lo subestima.');
+  else if (pr.t >= 0.5 && pr.s >= 0.5) o.push('Coinciden un pronóstico favorable y un lugar con historial de eventos, que es la combinación más relevante.');
+  if (estado.fen==='ros'){ const c0 = consecuencias(l).filas[0]; if (c0 && pr.p >= 0.2) o.push(`Si ocurre, lo más frecuente en eventos pasados ha sido ${c0.nom.toLowerCase()} (${c0.n} de ${c0.total}).`); }
+  else if (pr.p >= 0.2) o.push('Si hay depósito de polvo, el efecto esperable es una fusión más rápida de la nieve en los días de sol siguientes.');
+  o.push('Es un modelo inicial sin validar: conviene contrastarlo con los avisos de la Dirección Meteorológica y de SENAPRED.');
+  return o.join(' ');
+}
+const SISTEMA_IA_BASE = `Eres un asistente técnico de un equipo de investigación que estudia lluvia sobre nieve y depósito de polvo sobre la nieve en los Andes centrales de Chile (cuencas Aconcagua, Mapocho, Maipo y Cachapoal).
+Recibes la predicción de un modelo inicial basado en reglas, sin validar, para un lugar de estudio y los próximos 3 días.
+Escribe un comentario breve (4 a 6 oraciones, un solo párrafo) que:
+1) diga en palabras simples qué tan probable es el evento y por qué, nombrando las variables que más pesan con sus valores;
+2) señale qué variable podría cambiar el resultado o qué vigilar en las próximas horas;
+3) mencione las consecuencias históricas más frecuentes si la probabilidad es media o alta;
+4) recuerde en una frase que el modelo no está validado.
+Reglas de estilo: español neutro o chileno, sin voseo; sin negritas, sin listas, sin emojis y sin guiones largos. No inventes datos que no estén en la entrada. No des instrucciones de evacuación ni de seguridad; si la probabilidad es alta, sugiere revisar los avisos oficiales de la Dirección Meteorológica de Chile y de SENAPRED.`;
+const CITAS_IA = '\nSi nombras un umbral, puedes mencionar su fuente: 280 m (Schauwecker et al. 2022), tormentas cálidas sobre 3.000 m (Garreaud 2013), vapor de agua sobre 30 kg/m² (Valenzuela y Garreaud 2019).';
+const sistemaIA = () => SISTEMA_IA_BASE + (N.papersActivos() ? CITAS_IA : '\nNo cites autores ni papers.');
+async function llamarIA(clave, l, pr, crudos){
+  const datos = {
+    fecha_consulta: new Date().toLocaleString('es-CL'),
+    fenomeno: estado.fen==='ros' ? 'lluvia sobre nieve' : 'polvo sobre nieve',
+    lugar: l.nom, cuenca_de_origen: pr.c.nom,
+    probabilidad_3_dias: pr.p!=null ? pct(pr.p) : 'sin dato',
+    condicion_meteorologica: pr.t!=null ? pct(pr.t) : 'sin dato',
+    susceptibilidad_del_lugar: pct(pr.s),
+    variables: crudos.map(f=>({variable:f.n, valor:textoPlano(f.v), efecto:ETQ_MARCA[f.e], nota:textoPlano(f.d)})),
+    consecuencias_historicas: estado.fen==='ros' ? consecuencias(l).filas.slice(0,4).map(f=>({consecuencia:f.nom, eventos:`${f.n} de ${f.total}`})) : 'sin registros de prensa para polvo',
+    condiciones_actuales_en_la_cuenca: pr.m && pr.m.actual ? pr.m.actual : 'sin dato',
+    otros_lugares: N.LUGARES.map(x=>{ const q = predecir(x); return {lugar:x.nom, probabilidad: q.p!=null ? pct(q.p) : 'sin dato'}; }),
+    fuente_meteorologica: pr.m ? pr.m.fuente : 'sin pronóstico'
+  };
+  const r = await fetch('https://api.anthropic.com/v1/messages', {method:'POST',
+    headers:{'content-type':'application/json', 'x-api-key':clave, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'},
+    body: JSON.stringify({model:C.IA_MODELO, max_tokens:450, system:sistemaIA(),
+      messages:[{role:'user', content:'Datos de la predicción en JSON:\n'+JSON.stringify(datos, null, 1)+'\n\nEscribe el comentario.'}]})});
+  if (!r.ok){ let msg = 'HTTP '+r.status; try { const j = await r.json(); msg = (j.error && j.error.message) || msg; } catch(e){} throw new Error(msg); }
+  const j = await r.json();
+  return (j.content||[]).map(b=>b.text||'').join('').trim();
+}
+async function comentar(id){
+  const l = N.LUGARES.find(x=>x.id===id), k = claveComentario(l);
+  comentarios[k] = {cargando:true}; pintarLista();
+  porQue(l); const {crudos, pr} = porQue.ultimo;
+  const local = comentarioLocal(l, pr, crudos), clave = claveIA();
+  if (!clave) comentarios[k] = {texto:local, fuente:'Comentario automático armado con las variables, sin IA. Para comentarios con IA ingresa una clave en "Datos meteorológicos de entrada".'};
+  else {
+    try { comentarios[k] = {texto: await llamarIA(clave, l, pr, crudos), fuente:'Comentario escrito por IA (Claude) a partir de las variables mostradas. Puede equivocarse: contrástalo con los valores.'}; }
+    catch(e){ comentarios[k] = {texto:local, fuente:`No se pudo usar la IA (${e.message}). Se muestra el comentario automático.`}; }
+  }
+  pintarLista();
+}
+el('lista').addEventListener('click', e=>{ const b = e.target.closest('[data-comentar]'); if (b){ e.stopPropagation(); comentar(b.dataset.comentar); } });
+
+function abrirPorQueMapa(l){
+  if (!mapa || !pins[l.id]) return;
+  pins[l.id].unbindPopup();
+  pins[l.id].bindPopup(`<div class="pop-porque">${porQue(l)}</div>`, {maxWidth:340, autoPan:true}).openPopup();
+}
+
+/* ---------- Panel ---------- */
+function seleccionar(id){ estado.sel = id; N.guardado.escribir('lugarSel', id); pintar(); enfocarCalculo(); abrirPorQueMapa(N.LUGARES.find(x=>x.id===id)); }
+function pintarLista(){
+  const items = N.LUGARES.map(l=>({l, pr:predecir(l)}));
+  items.sort((a,b)=>(estado.modo==='prob' ? (b.pr.p??-1)-(a.pr.p??-1) : b.pr.s-a.pr.s));
+  el('lista').innerHTML = '';
+  items.forEach(({l,pr})=>{
+    const v = estado.modo==='prob' ? pr.p : pr.s, col = colorValor(v);
+    const cons = estado.fen==='ros' ? consecuencias(l).filas[0] : null;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'lugar'; b.setAttribute('aria-pressed', l.id===estado.sel);
+    b.innerHTML = `<span class="nom">${N.esc(l.nom)}</span><span class="val num" style="color:${col}">${v!=null ? pct(v) : 'sin datos'}</span>
+      <span class="det">Origen: ${pr.c.nom}${cons ? '. Consecuencia más frecuente: '+cons.nom.toLowerCase() : ''}</span>
+      <span class="barra"><i style="width:${v!=null?Math.max(2,v*100):0}%;background:${col}"></i></span>`;
+    b.addEventListener('click', ()=>seleccionar(l.id));
+    el('lista').appendChild(b);
+    if (l.id===estado.sel){ const d = document.createElement('div'); d.className = 'porque'; d.innerHTML = porQue(l) + bloqueComentario(l); el('lista').appendChild(d); }
+  });
+  el('ley-mapa').innerHTML = estado.modo==='prob'
+    ? `<span>${grilla.datos ? 'Celdas de unos 15 km con la probabilidad meteorológica en cada punto; las subcuencas muestran su celda más alta.' : 'Área coloreada: cuenca alta donde se origina el fenómeno.'} Marcadores: lugares donde llegan las consecuencias.</span><span class="fila" style="gap:12px">${['bajo','medio','alto'].map(n=>`<span class="fila" style="gap:5px"><span class="cuadro" style="background:${N.COL['riesgo-'+n]}"></span>${n==='bajo'?'Baja, menos de 20 %':n==='medio'?'Media, 20 a 50 %':'Alta, 50 % o más'}</span>`).join('')}</span>`
+    : `<span>Susceptibilidad: qué tan propenso es cada lugar, sin considerar el pronóstico.</span><span class="fila" style="gap:0">${[1,2,3,4].map(i=>`<span style="flex:1;height:10px;background:${N.SECUENCIAL[i]}"></span>`).join('')}</span><span class="fila" style="justify-content:space-between"><span>baja</span><span>alta</span></span>`;
+}
+
+/* ---------- Consecuencias ---------- */
+function consecuencias(l){
+  let ev = eventosROS(l), base = 'propios';
+  if (!ev.length){ ev = N.LUGARES.filter(x=>x.origen===l.origen).flatMap(eventosROS); base = 'cuenca'; }
+  if (!ev.length){ ev = D.cat.filter(e=>PESO_ROS[e.cat]); base = 'todos'; }
+  const filas = N.CONSECUENCIAS.map(c=>{
+    const conEsta = ev.filter(e=>N.consecuenciasDe(e).includes(c.k));
+    return {k:c.k, nom:c.nom, n:conEsta.length, total:ev.length, frac:conEsta.length/ev.length, ultimo:conEsta.sort((a,b)=>a.d0<b.d0?1:-1)[0]};
+  }).filter(f=>f.n>0).sort((a,b)=>b.frac-a.frac);
+  return {filas, base, n:ev.length};
+}
+function pintarConsecuencias(l, pr){
+  const th = el('cons').tHead, tb = el('cons').tBodies[0];
+  if (estado.fen==='polvo'){
+    el('cons-nota').textContent = 'El catastro de prensa no registra eventos de polvo: estas consecuencias vienen de la literatura y todavía no se pueden cuantificar en la zona. Las detecciones satelitales de partículas (V5) permitirán estimarlas.';
+    th.innerHTML = '<tr><th>Consecuencia</th><th>Dónde se notaría</th><th>Cómo se medirá</th></tr>';
+    tb.innerHTML = [
+      ['Fusión anticipada de la nieve', `${pr.c.nom}, en la franja con nieve cercana a las fuentes`, 'Caída de albedo y de NIR en Sentinel-2 tras días de viento seco'],
+      ['Menor caudal en primavera y verano', `Ríos aguas abajo, hasta ${l.nom}`, 'Caudales DGA comparados con años sin depósito'],
+      ['Pérdida temprana de la cobertura de nieve', 'Bandas de altura bajo 4.000 m', 'Fracción de nieve MODIS y Sentinel-2']
+    ].map(r=>`<tr><td>${r[0]}</td><td>${N.esc(r[1])}</td><td>${r[2]}</td></tr>`).join('');
+    return;
+  }
+  const r = consecuencias(l);
+  el('cons-nota').textContent = (r.base==='propios' ? `Basado en ${r.n} eventos de lluvia sobre nieve, tormentas cálidas o avalanchas registrados en ${l.nom}.`
+    : r.base==='cuenca' ? `${l.nom} no tiene eventos propios en el catastro; se usan los ${r.n} eventos de su cuenca.` : `Sin eventos en la cuenca; se usan los ${r.n} eventos de toda la zona.`)
+    + ' La probabilidad de cada consecuencia es la probabilidad del lugar multiplicada por la frecuencia con que esa consecuencia apareció.';
+  th.innerHTML = '<tr><th>Consecuencia</th><th>Frecuencia en eventos pasados</th><th>Probabilidad en 3 días</th><th>Último caso</th></tr>';
+  tb.innerHTML = r.filas.map(f=>`<tr><td>${f.nom}</td><td class="num">${f.n} de ${f.total} (${pct(f.frac)})</td><td class="num">${pr.p!=null ? pct(pr.p*f.frac) : 'sin pronóstico'}</td>
+    <td>${f.ultimo ? (+f.ultimo.d0.slice(5,7)>=6 && +f.ultimo.d0.slice(5,7)<=10 ? `<a href="fechas.html?evento=${f.ultimo.id}">${N.fecha(f.ultimo.d0)}: ${N.esc(f.ultimo.tipo)}</a>` : `${N.fecha(f.ultimo.d0)}: ${N.esc(f.ultimo.tipo)}`) : ''}</td></tr>`).join('')
+    || '<tr><td colspan="4">Sin consecuencias identificadas en el texto de las noticias.</td></tr>';
+}
+
+/* ---------- Detalle ---------- */
+function hora(t){ return N.fecha(t, true); }
+function pintarDetalle(){
+  const l = N.LUGARES.find(x=>x.id===estado.sel), pr = predecir(l), c = pr.c, m = pr.m;
+  const fenTxt = estado.fen==='ros' ? 'lluvia sobre nieve' : 'polvo sobre nieve';
+  el('t').textContent = `${l.nom}: ${fenTxt}`;
+  el('b-linea').style.display = '';
+  el('linea').value = lineaPrevia(c);
+  let txt;
+  if (!m) txt = `Sin pronóstico disponible. La susceptibilidad de ${l.nom} es ${pct(pr.s)}.`;
+  else if (estado.fen==='ros'){
+    txt = `Probabilidad ${NOM_NIVEL[NIVEL(pr.p)]} (${pct(pr.p)}) de lluvia sobre nieve en ${c.nom} con consecuencias en ${l.nom}. `;
+    txt += m.lluvia>=0.5 ? `Se esperan ${N.num(m.total,1)} mm, de los cuales ${N.num(m.lluvia,1)} mm caerían como lluvia sobre nieve entre ${hora(m.ini)} y ${hora(m.fin)}, con la isoterma hasta ${N.num(m.h0max)} m.`
+      : m.total>=1 ? `Se esperan ${N.num(m.total,1)} mm, pero la línea de nieve en tormenta quedaría bajo la nieve existente: caería como nieve.`
+      : `No se espera precipitación relevante (${N.num(m.total,1)} mm).`;
+  } else {
+    txt = `Probabilidad ${NOM_NIVEL[NIVEL(pr.p)]} (${pct(pr.p)}) de depósito de polvo sobre la nieve de ${c.nom}. `;
+    txt += !m.conNieve ? 'Con la línea de nieve actual casi no queda nieve expuesta.'
+      : m.horas ? `Habría ${N.num(m.horas)} horas secas con viento sobre ${VIENTO_MIN} m/s desde fuentes de polvo, entre ${hora(m.ini)} y ${hora(m.fin)}. Después hay ${N.num(m.sol)} horas de sol fuerte que acelerarían la fusión de la nieve con polvo.`
+      : `No se esperan horas secas con viento desde las ${m.fuentes.length} fuentes de polvo dentro de ${RADIO_KM} km.`;
+  }
+  if (m && estado.fen==='ros'){
+    if (m.capeMax > 300 && m.chub > 1) txt += ` Hay energía para tormentas convectivas (CAPE hasta ${N.num(m.capeMax)} J/kg), típicas de los aluviones de verano.`;
+    if (m.tcwvMax >= 30) txt += ` El vapor de agua en la columna llega a ${N.num(m.tcwvMax)} kg/m², sobre el umbral asociado a lluvias extremas y ríos atmosféricos.`;
+  }
+  if (m && m.ajuste) txt += ` La nieve previa se bajó de ${N.num(m.ajuste.desde)} a ${N.num(m.L)} m por la nevada del ${hora(m.ajuste.t)}.`;
+  const a = m && m.actual;
+  const ahoraTxt = a ? ` Ahora en ${c.nom}: ${a.temperature_2m!=null?N.num(a.temperature_2m,1)+' °C':''}${a.freezing_level_height!=null?', isoterma '+N.num(a.freezing_level_height)+' m':''}${a.precipitation!=null?', '+N.num(a.precipitation,1)+' mm':''}${a.wind_speed_10m!=null?', viento '+N.num(a.wind_speed_10m,1)+' m/s':''}.` : '';
+  el('resumen').textContent = txt + ahoraTxt + (m ? ` Datos meteorológicos: ${m.fuente}.` : '');
+
+  const sTxt = estado.fen==='ros'
+    ? `${pr.sInfo.n} eventos relacionados en ${anios} años (${N.num(pr.sInfo.tasa,2)} por año, ponderados por tipo).`
+    : `${pr.sInfo.n} fuentes de polvo a menos de ${RADIO_KM} km de ${c.nom}${estado.faenas ? '' : ' (faenas mineras aún no cargadas)'}.`;
+  const mTxt = !m ? 'Sin pronóstico.' : estado.fen==='ros'
+    ? `Lluvia sobre la nieve existente según la isoterma y la precipitación de los próximos 3 días.`
+    : `Horas secas con viento hacia la nieve desde las fuentes.`;
+  const col = pr.p!=null ? N.COL['riesgo-'+NIVEL(pr.p)] : N.COL['roca-3'];
+  el('ecuacion').innerHTML = `
+    <div class="factor"><div class="t">Susceptibilidad del lugar</div><div class="v num">${pct(pr.s)}</div><div class="x">${sTxt}</div></div>
+    <div class="op">y</div>
+    <div class="factor"><div class="t">Condición meteorológica</div><div class="v num">${pr.t!=null ? pct(pr.t) : 'sin datos'}</div><div class="x">${mTxt}</div></div>
+    <div class="op">=</div>
+    <div class="factor final"><div class="t">Probabilidad en 3 días</div><div class="v num" style="color:${col}">${pr.p!=null ? pct(pr.p) : 'sin datos'}</div><div class="x">${pr.p!=null ? `<span class="chip r-${NIVEL(pr.p)}"><span class="ico"></span>Probabilidad ${NOM_NIVEL[NIVEL(pr.p)]}</span>` : ''}</div></div>`;
+  pintarConsecuencias(l, pr);
+  pintarGraficos(c, m);
+  el('metodo').innerHTML = estado.fen==='ros' ? `
+    <p>Probabilidad = condición meteorológica multiplicada por (0,35 + 0,65 por la susceptibilidad). Un lugar sin historial conserva parte de la probabilidad que da el pronóstico.</p>
+    <p>Susceptibilidad: tasa anual de eventos del catastro en el lugar, con peso 1 para lluvia sobre nieve, 0,6 para tormenta cálida y 0,3 para avalancha. Se lleva a una escala de 10 a 100 %.</p>
+    <p>Condición meteorológica: para cada hora se compara la línea de nieve en tormenta (isoterma 0 °C menos 280 m) con la nieve previa. La precipitación que cae sobre nieve se pondera por el espesor de la franja (plena desde 600 m); 20 mm sobre 600 m dan cerca de 85 %.</p>
+    <p class="info-papers">Base bibliográfica: desfase de 280 m entre isoterma y línea de nieve (Schauwecker et al. 2022); tormentas cálidas con isoterma sobre 3.000 m (Garreaud 2013; río atmosférico de junio de 2023 con isoterma cerca de 3.100 m); vapor de agua sobre 30 kg/m² en lluvias extremas (Valenzuela y Garreaud 2019). Los pronósticos de isoterma tienden a subestimarla en los casos de isoterma alta (Neiman et al. 2014). Detalle en la página <a href="estudios.html">Estudios</a>.</p>
+    <p>Siguiente paso: reemplazar estas reglas por un modelo entrenado con el catastro, las escenas satelitales y ERA5 (por ejemplo, regresión logística), y validar con años que no se usen para entrenar.</p>` : `
+    <p>Probabilidad = condición meteorológica multiplicada por (0,35 + 0,65 por la susceptibilidad).</p>
+    <p>Susceptibilidad: suma de las fuentes de polvo (faenas mineras activas y fuentes documentadas, como la Ruta CH-60) a menos de ${RADIO_KM} km del punto de la cuenca, cada una con peso 1/(1 + distancia/10 km).</p>
+    <p>Condición meteorológica: horas sin precipitación con viento de ${VIENTO_MIN} m/s o más que sopla desde una fuente hacia la cuenca (dirección dentro de 45°), con nieve presente. Se suman ponderadas por la velocidad del viento y la cercanía de la fuente.</p>
+    <p class="info-papers">Base bibliográfica: caída de albedo por partículas en el Aconcagua alto (Figueroa-Villanueva et al. 2023); carbono negro que depende de la cercanía a las fuentes (Aranda et al. 2023b); vehículos mineros y polvo local como fuentes (Bolaño-Ortiz et al., EGU 2026). Detalle en la página <a href="estudios.html">Estudios</a>.</p>
+    <p>Siguiente paso: calibrar con las detecciones satelitales de partículas y con trayectorias de viento (por ejemplo, HYSPLIT) en lugar de la dirección del viento en un solo punto.</p>`;
+}
+function pintarGraficos(c, m){
+  const cont = el('graficos'); cont.innerHTML = '';
+  if (!m){ cont.innerHTML = '<p class="muted">Sin pronóstico disponible.</p>'; return; }
+  const ahora = Date.now(), x = {tipo:'fecha', min:ahora-2*36e5, max:ahora+HORAS*36e5};
+  const bloque = (t, ley)=>{ const b = document.createElement('div'); b.className = 'bloque'; b.innerHTML = `<h3>${t}</h3><div class="leyenda"></div>`; cont.appendChild(b); N.leyenda(b.querySelector('.leyenda'), ley); return b; };
+  if (estado.fen==='ros'){
+    const franjas = m.pasos.filter(s=>s.franja>0 && s.p>=0.2).map(s=>({x0:s.t, x1:s.t+s.dur*36e5}));
+    const b1 = bloque('Isoterma 0 °C y línea de nieve (m s.n.m.)', [{color:N.COL.hielo, texto:'Isoterma 0 °C'}, {color:N.COL['roca-3'], texto:'Línea de nieve en tormenta'}, {color:N.COL.roca, texto:'Nieve previa'}, {color:'rgba(168,50,122,.25)', texto:'Horas con lluvia sobre nieve', forma:'cuadro'}]);
+    const d = m.pasos.filter(s=>s.h0!=null), ys = d.map(s=>s.h0).concat([m.L, d.length?Math.min(...d.map(s=>s.h0))-C.DESFASE_LINEA_NIEVE:m.L]);
+    N.grafico(b1, {alto:230, x, y:{min:Math.floor((Math.min(...ys)-200)/500)*500, max:Math.ceil((Math.max(...ys)+200)/500)*500},
+      series:[{nombre:'Isoterma 0 °C', color:N.COL.hielo, tipo:'linea', datos:d.map(s=>({x:s.t, y:s.h0, s}))},
+              {nombre:'Línea de nieve en tormenta', color:N.COL['roca-3'], tipo:'linea', discontinua:true, grosor:1.5, datos:d.map(s=>({x:s.t, y:s.h0-C.DESFASE_LINEA_NIEVE, s}))}],
+      refs:[{y:m.L, texto:'Nieve previa '+N.num(m.L)+' m', color:N.COL.roca}], franjas, ahora, hoverX:true, tooltip:(p,s)=>`${hora(p.x)}<br>${s.nombre}: ${N.num(p.y)} m`});
+    const conVapor = m.pasos.filter(s=>s.tcwv!=null);
+    let b3 = null;
+    if (conVapor.length){
+      b3 = bloque('Vapor de agua total en la columna (kg/m²)', [{color:N.COL.hielo, texto:'Vapor de agua; valores altos y sostenidos indican un río atmosférico'}]);
+      N.grafico(b3, {alto:150, x, y:{min:0, etiqueta:'kg/m²'}, ahora, hoverX:true,
+        series:[{nombre:'Vapor de agua', color:N.COL.hielo, tipo:'linea', datos:conVapor.map(s=>({x:s.t, y:s.tcwv, s}))}],
+        tooltip:p=>`${hora(p.x)}: ${N.num(p.y,1)} kg/m²${p.s.cape!=null?'<br>CAPE '+N.num(p.s.cape)+' J/kg':''}`});
+    }
+    const b2 = bloque('Precipitación (mm por paso)', [{color:N.COL['cat-a'], texto:'Cae como lluvia sobre nieve', forma:'cuadro'}, {color:N.COL.e2, texto:'Nieve, o lluvia bajo la línea de nieve', forma:'cuadro'}]);
+    const tip = p=>`${hora(p.x)}: ${N.num(p.y,1)} mm<br>Isoterma ${N.num(p.s.h0)} m`;
+    N.grafico(b2, {alto:160, x, y:{min:0, etiqueta:'mm'}, ahora, hoverX:true, tooltip:tip,
+      series:[{nombre:'Sobre nieve', color:N.COL['cat-a'], tipo:'barras', datos:m.pasos.filter(s=>s.p>0 && s.franja>0).map(s=>({x:s.t+s.dur*18e5, y:s.p, s}))},
+              {nombre:'Resto', color:N.COL.e2, tipo:'barras', datos:m.pasos.filter(s=>s.p>0 && !(s.franja>0)).map(s=>({x:s.t+s.dur*18e5, y:s.p, s}))}]});
+    if (b3) cont.appendChild(b3);
+  } else {
+    const franjas = m.pasos.filter(s=>s.arriba && s.arriba.length).map(s=>({x0:s.t, x1:s.t+s.dur*36e5, color:N.COL.fuente}));
+    const b1 = bloque('Viento a 10 m (m/s)', [{color:N.COL.hielo, texto:'Velocidad media'}, {color:N.COL['roca-3'], texto:'Ráfagas'}, {color:'rgba(107,74,42,.25)', texto:'Horas secas con viento desde una fuente de polvo', forma:'cuadro'}]);
+    const dirTxt = g => ['norte','noreste','este','sureste','sur','suroeste','oeste','noroeste'][Math.round(g/45)%8];
+    N.grafico(b1, {alto:220, x, y:{min:0, etiqueta:'m/s'}, franjas, ahora, hoverX:true,
+      refs:[{y:VIENTO_MIN, texto:'umbral '+VIENTO_MIN+' m/s', color:N.COL.roca, discontinua:true}],
+      series:[{nombre:'Viento', color:N.COL.hielo, tipo:'linea', datos:m.pasos.filter(s=>s.ws!=null).map(s=>({x:s.t, y:s.ws, s}))},
+              {nombre:'Ráfagas', color:N.COL['roca-3'], tipo:'linea', discontinua:true, grosor:1.5, datos:m.pasos.filter(s=>s.wg!=null).map(s=>({x:s.t, y:s.wg, s}))}],
+      tooltip:(p)=>`${hora(p.x)}<br>Viento ${N.num(p.s.ws,1)} m/s desde el ${p.s.wd!=null?dirTxt(p.s.wd):'sin dato'}${p.s.arriba&&p.s.arriba.length?'<br>Desde: '+N.esc(p.s.arriba.map(f=>f.nom).join(', ')):''}`});
+    const b2 = document.createElement('div'); b2.className = 'bloque'; cont.appendChild(b2);
+    b2.innerHTML = `<h3>Fuentes de polvo a menos de ${RADIO_KM} km de ${N.esc(c.nom)}</h3>` + (m.fuentes.length ? `<div class="tabla-scroll" style="margin-top:8px;max-height:260px"><table><thead><tr><th>Fuente</th><th>Tipo</th><th>Distancia</th><th>Dirección desde la cuenca</th></tr></thead><tbody>${m.fuentes.map(f=>`<tr><td>${N.esc(f.nom)}</td><td>${N.esc(f.tipo)}</td><td class="num">${N.num(f.d)} km</td><td>${dirTxt(f.rumbo)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No hay fuentes registradas en ese radio.</p>');
+  }
+}
+function pintar(){
+  const a = estado.actualizado;
+  el('actualizado').textContent = a ? `Pronóstico actualizado a las ${String(a.getHours()).padStart(2,'0')}:${String(a.getMinutes()).padStart(2,'0')}; se renueva cada ${C.ACTUALIZAR_MIN} minutos.` : 'Cargando pronóstico...';
+  pintarLista(); pintarDetalle(); pintarMapa();
+}
+
+/* ---------- Controles ---------- */
+function grupoBotones(attr, clave, alCambiar){
+  document.querySelectorAll(`[data-${attr}]`).forEach(b=>{
+    b.setAttribute('aria-pressed', b.dataset[attr]===estado[clave]);
+    b.addEventListener('click', ()=>{ estado[clave] = b.dataset[attr]; document.querySelectorAll(`[data-${attr}]`).forEach(x=>x.setAttribute('aria-pressed', x===b)); alCambiar(); });
+  });
+}
+grupoBotones('fen','fen', ()=>{ N.guardado.escribir('fen', estado.fen); pintar(); });
+grupoBotones('modo','modo', pintar);
+grupoBotones('fuente','fuente', ()=>{
+  N.guardado.escribir('fuente', estado.fuente);
+  el('clave').classList.toggle('on', estado.fuente==='owm');
+  if (estado.fuente==='owm' && !estado.clave){ el('owm-key').focus(); return; }
+  cargar();
+});
+el('clave').classList.toggle('on', estado.fuente==='owm');
+el('owm-key').value = estado.clave;
+el('owm-guardar').addEventListener('click', ()=>{ estado.clave = el('owm-key').value.trim(); if (!C.OWM_API_KEY) N.guardado.escribir('owm', estado.clave); cargar(); });
+el('actualizar').addEventListener('click', ()=>{ cargar(); actualizarGrilla(true); });
+el('ia-key').value = claveIA() ? '••••••••' : '';
+el('ia-guardar').addEventListener('click', ()=>{ const v = el('ia-key').value.trim(); if (v && !v.startsWith('••')) N.guardado.escribir('ia', v); el('ia-key').value = claveIA() ? '••••••••' : ''; pintarLista(); });
+el('ia-borrar').addEventListener('click', ()=>{ N.guardado.escribir('ia', ''); el('ia-key').value = ''; pintarLista(); });
+el('bajar-met').addEventListener('click', ()=>{
+  const filas = [];
+  N.CUENCAS.forEach(c=>{
+    const r = estado.met[c.id]; if (!r || !r.pasos) return;
+    const h = r.pasos.crudo;
+    if (h) h.time.forEach((t,i)=>{ const f = {cuenca:c.nom, lat:c.lat, lon:c.lon, fuente:r.fuente, hora:t}; Object.keys(h).forEach(k=>{ if (k!=='time') f[k] = h[k][i]; }); filas.push(f); });
+    else r.pasos.forEach(s=>filas.push({cuenca:c.nom, lat:c.lat, lon:c.lon, fuente:r.fuente, hora:new Date(s.t).toISOString(), precipitation:s.p, freezing_level_height:s.h0, wind_speed_10m:s.ws, wind_direction_10m:s.wd, wind_gusts_10m:s.wg}));
+  });
+  if (!filas.length) return;
+  const cols = [...new Set(filas.flatMap(f=>Object.keys(f)))];
+  const d = new Date();
+  N.descargar(`pronostico_cuencas_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}h.csv`, N.aCSV(filas, cols));
+});
+el('linea').addEventListener('change', e=>{ const c = cuencaDe(N.LUGARES.find(x=>x.id===estado.sel).origen), v = +e.target.value; if (v>=500 && v<=6000) N.guardado.escribir(clavelinea(c), v); pintar(); });
+el('linea-ref').addEventListener('click', ()=>{ const c = cuencaDe(N.LUGARES.find(x=>x.id===estado.sel).origen); N.guardado.escribir(clavelinea(c), null); pintar(); });
+
+pintar();
+cargar();
+actualizarGrilla(false);
+setInterval(cargar, C.ACTUALIZAR_MIN*60000);
+setInterval(()=>actualizarGrilla(false), 60*60000);
+if (mapa){ setTimeout(()=>mapa.invalidateSize(), 60); window.addEventListener('resize', ()=>mapa.invalidateSize()); }
+})();
+</script>
+</body>
+</html>
