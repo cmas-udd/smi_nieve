@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudios de referencia, monitor de nieve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,500;87.5,600;87.5,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/estilo.css">
+<style>
+.lista-estudios{display:grid;gap:12px}
+.estudio{background:var(--papel);border:1px solid var(--neblina);border-radius:var(--r-m);padding:14px 16px;scroll-margin-top:16px}
+.estudio:target{border-color:#8D6CCB;box-shadow:0 0 0 2px #E6DAFA}
+.estudio h3{font-size:1.05rem}
+.estudio .ref{color:var(--roca-2);font-size:.88rem;margin:2px 0 8px}
+.estudio dl{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:4px 14px;margin:0;font-size:.92rem}
+.estudio dt{color:var(--roca-2)} .estudio dd{margin:0}
+.etiquetas{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.etiqueta{font-size:.78rem;border-radius:999px;padding:1px 9px;border:1px solid var(--neblina-2);color:var(--roca-2)}
+.etiqueta.zona{border-color:#8D6CCB;color:#4B3482}
+table.parametros td:first-child{white-space:nowrap}
+</style>
+</head>
+<body>
+<p class="aviso" role="note">Resúmenes escritos por el equipo a partir de los documentos; para citar o usar un resultado, revisar siempre el original.</p>
+<main class="cuerpo">
+  <h2>Estudios de referencia</h2>
+  <p class="muted" style="max-width:80ch;margin:6px 0 16px">Papers, pósters y presentaciones que sustentan la plataforma. Los que tienen área de estudio dentro de la zona también aparecen como capa en los mapas de Predicción y Datos por fecha.</p>
+
+  <div class="bloque">
+    <h3>Parámetros de la plataforma que vienen de estos estudios</h3>
+    <div class="tabla-scroll" style="max-height:none;margin-top:8px"><table class="parametros">
+      <thead><tr><th>Parámetro</th><th>Valor en la plataforma</th><th>Fuente</th></tr></thead>
+      <tbody id="parametros"></tbody>
+    </table></div>
+  </div>
+
+  <div class="filtros fila" style="margin:16px 0 12px">
+    <label class="campo">Tema <select id="f-tema"><option value="">Todos</option></select></label>
+    <label class="campo">Alcance <select id="f-alcance"><option value="">Todos</option></select></label>
+    <label class="campo">Buscar <input type="text" id="f-texto" placeholder="autor, lugar, palabra" size="24"></label>
+    <span class="muted small" id="cuenta"></span>
+  </div>
+  <div class="lista-estudios" id="lista"></div>
+</main>
+<footer class="pie">Fuentes: carpeta de papers del proyecto (01_PAPERS) y pósters o presentaciones asociados.</footer>
+
+<script src="assets/datos.js"></script>
+<script src="assets/estudios.js"></script>
+<script src="assets/comun.js"></script>
+<script>
+(function(){
+const N = window.NIEVE, E = window.ESTUDIOS, D = window.DATA;
+N.encabezado('estudios');
+const el = id => document.getElementById(id);
+const PARAMETROS = [
+  ['Línea de nieve en tormenta', 'Isoterma 0 °C menos 280 m', 'schauwecker2022'],
+  ['Tormenta cálida', 'Isoterma sobre 3.000 m con precipitación', 'garreaud2013'],
+  ['Escenario de ejemplo y año de validación', 'Isoterma de 3.100 m; temporada 2023', 'agu2023'],
+  ['Señal de río atmosférico', 'Vapor de agua sobre 30 kg/m²', 'valenzuela2019'],
+  ['Sesgo del pronóstico de isoterma', 'Advertencia: puede subestimar los casos de isoterma alta', 'neiman2014'],
+  ['Línea de nieve previa', 'Por reemplazar con MODIS (método de cota óptima)', 'krajci2014'],
+  ['Fuentes de polvo ponderadas por distancia', 'Peso 1/(1 + distancia/10 km)', 'aranda2023bc'],
+  ['Caída de albedo como señal de depósito', 'Detección satelital de partículas (V5)', 'figueroa2023'],
+  ['Validación con espesor de nieve', 'Red de estaciones DGA', 'caro2026']
+];
+const porId = Object.fromEntries(E.map(e=>[e.id, e]));
+el('parametros').innerHTML = PARAMETROS.map(([p,v,id])=>`<tr><td>${p}</td><td>${v}</td><td><a href="#${id}">${N.esc(porId[id].cita)}</a></td></tr>`).join('');
+const temas = [...new Set(E.map(e=>e.tema))].sort();
+el('f-tema').innerHTML += temas.map(t=>`<option>${N.esc(t)}</option>`).join('');
+el('f-alcance').innerHTML += Object.entries(N.ALCANCE).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+function pintar(){
+  const t = el('f-tema').value, a = el('f-alcance').value, q = el('f-texto').value.trim().toLowerCase();
+  const orden = {zona:0, regional:1, otra:2};
+  const lista = E.filter(e=>(!t || e.tema===t) && (!a || e.alcance===a) && (!q || JSON.stringify(e).toLowerCase().includes(q)))
+    .sort((x,y)=>orden[x.alcance]-orden[y.alcance] || y.anio-x.anio);
+  el('cuenta').textContent = `${lista.length} de ${E.length} estudios`;
+  el('lista').innerHTML = lista.map(e=>{
+    const evs = (e.eventos||[]).map(id=>{ const ev = D.cat.find(x=>x.id===id); return ev ? `<a href="fechas.html?evento=${id}">${N.fecha(ev.d0)}: ${N.esc(ev.tipo)} (${N.esc(ev.lugar||ev.sitio)})</a>` : ''; }).filter(Boolean);
+    return `<article class="estudio" id="${e.id}">
+      <div class="etiquetas"><span class="etiqueta${e.alcance==='zona'?' zona':''}">${N.ALCANCE[e.alcance]}</span><span class="etiqueta">${N.esc(e.tema)}</span></div>
+      <h3>${N.esc(e.cita)}</h3>
+      <p class="ref">${N.esc(e.titulo)}. ${N.esc(e.revista||'')}${e.doi?`. <a href="https://doi.org/${N.esc(e.doi)}" target="_blank" rel="noopener">doi:${N.esc(e.doi)}</a>`:''}</p>
+      <dl>
+        <dt>Zona</dt><dd>${N.esc(e.zona)}${e.geom?' <span class="muted">(en el mapa)</span>':''}</dd>
+        <dt>Qué encontró</dt><dd>${N.esc(e.hallazgo)}</dd>
+        <dt>En la plataforma</dt><dd>${N.esc(e.uso)}</dd>
+        ${evs.length ? `<dt>Eventos del catastro</dt><dd>${evs.join('<br>')}</dd>` : ''}
+      </dl>
+    </article>`;
+  }).join('') || '<p class="muted">Ningún estudio coincide con los filtros.</p>';
+  if (location.hash){ const x = document.querySelector(location.hash); if (x) x.scrollIntoView({block:'start'}); }
+}
+['f-tema','f-alcance'].forEach(id=>el(id).addEventListener('change', pintar));
+el('f-texto').addEventListener('input', pintar);
+pintar();
+})();
+</script>
+</body>
+</html>
