@@ -1,0 +1,1 @@
+window.NIEVE_INDICE=[2023];
