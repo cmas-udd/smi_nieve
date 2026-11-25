@@ -1,0 +1,6 @@
+Aqui van las capas GeoJSON que genera herramientas/descargar_capas.py:
+subcuencas, cuencas, rios, caminos, faenas, relaves y volcanes.
+
+lugares_cambio_por_anio.geojson y lugares_cambio.geojson: salen del script de GEE (herramientas/gee_embeddings_cambio.js).
+
+nieve_AAAA.js y nieve_indice.js: nieve diaria MODIS y línea de nieve por año; salen de herramientas/preparar_nieve.py a partir de lo exportado desde GEE.
